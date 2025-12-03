@@ -3,7 +3,7 @@ namespace Falcon.Application.Contracts.Servers;
 /// <summary>
 /// Represents a summary view of a monitored server.
 /// </summary>
-public sealed class ServerSummaryDto
+public record class ServerSummaryDto
 {
     public Guid Id { get; init; }
 
@@ -25,5 +25,5 @@ public sealed class ServerSummaryDto
 
     public double? MemoryPercent { get; init; }
 
-    public IReadOnlyCollection<string> Tags { get; init; } = Array.Empty<string>();
+    public IReadOnlyCollection<string> Tags { get; init; } = [];
 }

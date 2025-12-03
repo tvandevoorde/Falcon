@@ -416,3 +416,7 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# Keep Logs DTOs in the application project (do not ignore)
+!src/Falcon.Application/Contracts/Logs/
+!src/Falcon.Application/Contracts/Logs/*.cs

@@ -1,4 +1,3 @@
-using System.Linq;
 using AutoMapper;
 using Falcon.Application.Contracts.Admin;
 using Falcon.Application.Contracts.Alerts;
@@ -59,7 +58,10 @@ public sealed class MonitoringMappingProfile : Profile
             .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status.ToLowerInvariant()));
 
         CreateMap<Notification, NotificationDto>()
-            .ForMember(dest => dest.Channel, opt => opt.MapFrom(src => src.Channel.ToString().ToLowerInvariant()))
+            .ForMember(
+                dest => dest.Channel,
+                opt => opt.MapFrom((src, dest) => src.Channel != null ? src.Channel.ToString()!.ToLowerInvariant() : string.Empty)
+            )
             .ForMember(dest => dest.Status, opt => opt.MapFrom(src => src.Status.ToString().ToLowerInvariant()));
 
         CreateMap<Collector, CollectorDto>()

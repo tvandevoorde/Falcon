@@ -163,7 +163,7 @@ Features explicitly not in scope or not needed.
 - Responsive layouts
 - Role-based visibility
 
-### 2. API Layer (.NET 8/9)
+### 2. API Layer (.NET 10)
 
 - Modular endpoints: Services, Tasks, IIS, Logs
 - Authentication via Azure AD / AD FS / LDAP
@@ -189,6 +189,38 @@ Features explicitly not in scope or not needed.
 - SMTP for email
 - Optional Teams webhooks
 - Severity levels (Info / Warning / Critical)
+
+## Local Development
+
+1. Install the .NET 10 SDK from [dotnet.microsoft.com](https://dotnet.microsoft.com/). Verify with `dotnet --list-sdks`.
+2. Restore dependencies: `dotnet restore Falcon.sln`
+3. Run the full solution build: `dotnet build Falcon.sln`
+4. Execute automated tests: `dotnet test Falcon.sln`
+5. Launch the API locally:
+  - `dotnet run --project src/Falcon.Api/Falcon.Api.csproj`
+  - API base address defaults to `https://localhost:5001`.
+6. Explore Swagger UI at `https://localhost:5001/swagger` for interactive contract review.
+
+### Configuration
+
+- `appsettings.Development.json` contains local overrides (connection strings, logging). Provide secrets via user secrets or environment variables rather than committing them.
+- JWT authentication uses placeholders; integrate with your identity provider by replacing the `JwtBearer` configuration in `Program.cs`.
+- Health checks are exposed under `/healthz`; secure the endpoint when deploying to shared environments.
+
+## Testing Strategy
+
+- Unit tests live in the `tests` directory and use xUnit with FluentAssertions.
+- Favor Test-Driven Development for new application handlers and domain behaviors; keep tests self-contained and deterministic.
+- For integration coverage, introduce a dedicated project (e.g., `Falcon.Api.Tests.Integration`) and host the API with `WebApplicationFactory`.
+- Capture regression scenarios for maintenance-window muting, alert state transitions, and collector heartbeat handling.
+
+## Continuous Delivery Guidance
+
+- The repository includes a GitHub Actions workflow at `.github/workflows/ci.yml` that executes on pushes and pull requests targeting `main`, `develop`, and `features/*` branches.
+- The workflow runs a two-OS matrix build (`ubuntu-latest`, `windows-latest`), restores packages, builds in `Release`, and runs the test suite while publishing TRX artifacts.
+- A security baseline job performs `dotnet list package --vulnerable --include-transitive`; extend it with SAST or container scanning as the platform matures.
+- The deployment job is a placeholder. Replace the echo script with platform-specific steps (Azure Web App, Azure Container Apps, or on-prem) and protect the environment with approvals.
+- For faster feedback loops (DORA metrics), keep pull requests small, embrace feature flags, and aim for pipeline durations under 10 minutes.
 
 ## Database Schema
 

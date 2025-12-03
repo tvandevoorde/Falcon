@@ -13,7 +13,7 @@ public sealed class UserProfileDto
 
     public string Email { get; init; } = string.Empty;
 
-    public IReadOnlyCollection<string> Roles { get; init; } = Array.Empty<string>();
+    public IReadOnlyCollection<string> Roles { get; init; } = [];
 
     public DateTimeOffset CreatedAt { get; init; }
 }

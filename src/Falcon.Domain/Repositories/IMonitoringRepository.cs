@@ -199,9 +199,9 @@ public interface IMonitoringRepository
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>Paged log entries.</returns>
     Task<PagedResult<LogEntry>> SearchLogsAsync(
-        Guid? serverId,
+        IReadOnlyCollection<Guid>? serverIds,
         IReadOnlyCollection<Guid>? logFileIds,
-        string? severity,
+        IReadOnlyCollection<string>? severities,
         string? text,
         DateTimeOffset? from,
         DateTimeOffset? to,

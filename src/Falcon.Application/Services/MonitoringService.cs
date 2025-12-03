@@ -1,11 +1,8 @@
-using System;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using AutoMapper;
 using Falcon.Application.Abstractions;
 using Falcon.Application.Contracts.Admin;
 using Falcon.Application.Contracts.Alerts;
+using Falcon.Application.Contracts.Auth;
 using Falcon.Application.Contracts.Collectors;
 using Falcon.Application.Contracts.Common;
 using Falcon.Application.Contracts.Iis;
@@ -19,24 +16,18 @@ using Falcon.Domain.Enumerations;
 using Falcon.Domain.Repositories;
 using Falcon.Domain.ValueObjects;
 using Microsoft.Extensions.Logging;
+using NotificationChannelEntity = Falcon.Domain.Entities.NotificationChannel;
 
 namespace Falcon.Application.Services;
 
 /// <summary>
 /// Provides orchestration logic for the Falcon monitoring platform.
 /// </summary>
-public sealed class MonitoringService : IMonitoringService
+public sealed class MonitoringService(IMonitoringRepository repository, IMapper mapper, ILogger<MonitoringService> logger) : IMonitoringService
 {
-    private readonly IMonitoringRepository repository;
-    private readonly IMapper mapper;
-    private readonly ILogger<MonitoringService> logger;
-
-    public MonitoringService(IMonitoringRepository repository, IMapper mapper, ILogger<MonitoringService> logger)
-    {
-        this.repository = repository;
-        this.mapper = mapper;
-        this.logger = logger;
-    }
+    private readonly IMonitoringRepository repository = repository;
+    private readonly IMapper mapper = mapper;
+    private readonly ILogger<MonitoringService> logger = logger;
 
     /// <inheritdoc />
     public async Task<UserProfileDto> GetCurrentUserProfileAsync(CancellationToken cancellationToken)
@@ -53,7 +44,7 @@ public sealed class MonitoringService : IMonitoringService
                 Username = "system",
                 DisplayName = "System",
                 Email = "noreply@example.com",
-                Roles = Array.Empty<string>(),
+                Roles = [],
                 CreatedAt = DateTimeOffset.UtcNow
             };
         }
@@ -260,9 +251,9 @@ public sealed class MonitoringService : IMonitoringService
     public async Task<PagedResponseDto<LogEntryDto>> SearchLogsAsync(LogSearchRequestDto request, CancellationToken cancellationToken)
     {
         var result = await repository.SearchLogsAsync(
-            request.ServerId,
+            request.ServerIds,
             request.LogFileIds,
-            request.Severity,
+            request.Severities,
             request.Query,
             request.From,
             request.To,
@@ -292,14 +283,16 @@ public sealed class MonitoringService : IMonitoringService
     public async Task<PagedResponseDto<AlertDto>> GetAlertsAsync(string? status, string? severity, Guid? serverId, string? sourceType, CancellationToken cancellationToken)
     {
         var result = await repository.ListAlertsAsync(status, severity, serverId, sourceType, cancellationToken).ConfigureAwait(false);
-        var alerts = mapper.Map<List<AlertDto>>(result.Items);
-        foreach (var alertDto in alerts)
-        {
-            var alert = result.Items.First(a => a.Id == alertDto.Id);
-            alertDto.Notifications = mapper.Map<IReadOnlyCollection<NotificationDto>>(alert.Notifications);
-        }
+        var enrichedAlerts = mapper.Map<List<AlertDto>>(result.Items)
+            .Select(alertDto =>
+            {
+                var alert = result.Items.First(a => a.Id == alertDto.Id);
+                var notifications = mapper.Map<IReadOnlyCollection<NotificationDto>>(alert.Notifications);
+                return alertDto with { Notifications = notifications };
+            })
+            .ToList();
 
-        return MapPaged(result, alerts);
+        return MapPaged(result, enrichedAlerts);
     }
 
     /// <inheritdoc />
@@ -312,8 +305,8 @@ public sealed class MonitoringService : IMonitoringService
         }
 
         var dto = mapper.Map<AlertDto>(alert);
-        dto.Notifications = mapper.Map<IReadOnlyCollection<NotificationDto>>(alert.Notifications);
-        return dto;
+        var notifications = mapper.Map<IReadOnlyCollection<NotificationDto>>(alert.Notifications);
+        return dto with { Notifications = notifications };
     }
 
     /// <inheritdoc />
@@ -387,7 +380,7 @@ public sealed class MonitoringService : IMonitoringService
     /// <inheritdoc />
     public async Task<NotificationChannelDto> UpsertNotificationChannelAsync(UpsertNotificationChannelRequestDto request, CancellationToken cancellationToken)
     {
-        var channel = new NotificationChannel(request.Id ?? Guid.NewGuid(), request.Channel, request.Settings);
+        var channel = new NotificationChannelEntity(request.Id ?? Guid.NewGuid(), request.Channel, request.Settings);
         var persisted = await repository.UpsertNotificationChannelAsync(channel, cancellationToken).ConfigureAwait(false);
         return mapper.Map<NotificationChannelDto>(persisted);
     }
@@ -448,17 +441,15 @@ public sealed class MonitoringService : IMonitoringService
         var users = await repository.ListUsersAsync(cancellationToken).ConfigureAwait(false);
         var roles = await repository.ListRolesAsync(cancellationToken).ConfigureAwait(false);
 
-        return users.Select(user => new UserDto
+        return [.. users.Select(user => new UserDto
         {
             Id = user.Id,
             Username = user.Username,
             DisplayName = user.DisplayName,
             Email = user.Email,
             CreatedAt = user.CreatedAt,
-            Roles = user.RoleAssignments
-                .Select(assignment => roles.FirstOrDefault(role => role.Id == assignment.RoleId)?.Name ?? assignment.RoleId.ToString())
-                .ToArray()
-        }).ToArray();
+            Roles = [.. user.RoleAssignments.Select(assignment => roles.FirstOrDefault(role => role.Id == assignment.RoleId)?.Name ?? assignment.RoleId.ToString())]
+        })];
     }
 
     /// <inheritdoc />
@@ -479,7 +470,7 @@ public sealed class MonitoringService : IMonitoringService
         var dto = mapper.Map<UserDto>(user);
         dto = dto with
         {
-            Roles = request.RoleIds?.Select(roleId => roleId.ToString()).ToArray() ?? Array.Empty<string>()
+            Roles = request.RoleIds?.Select(roleId => roleId.ToString()).ToArray() ?? []
         };
         return dto;
     }
@@ -522,7 +513,7 @@ public sealed class MonitoringService : IMonitoringService
     /// <inheritdoc />
     public async Task<IReadOnlyCollection<LogEntryDto>> TailLogsAsync(Guid logFileId, DateTimeOffset? from, CancellationToken cancellationToken)
     {
-        var logs = await repository.SearchLogsAsync(null, new[] { logFileId }, null, null, from, null, 1, 100, cancellationToken).ConfigureAwait(false);
+        var logs = await repository.SearchLogsAsync(null, [logFileId], null, null, from, null, 1, 100, cancellationToken).ConfigureAwait(false);
         return mapper.Map<IReadOnlyCollection<LogEntryDto>>(logs.Items.OrderBy(e => e.Timestamp).ToList());
     }
 
@@ -556,14 +547,14 @@ public sealed class MonitoringService : IMonitoringService
         return AlertSeverity.Warning;
     }
 
-    private static CollectorType ParseCollectorType(string value)
+    private static MonitoringEnums ParseCollectorType(string value)
     {
-        if (Enum.TryParse<CollectorType>(value, true, out var type))
+        if (Enum.TryParse<MonitoringEnums>(value, true, out var type))
         {
             return type;
         }
 
-        return CollectorType.Agent;
+        return MonitoringEnums.Agent;
     }
 
     private static ServiceSummaryDto BuildServiceSummary(Server server)

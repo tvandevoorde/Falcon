@@ -1,0 +1,89 @@
+name: Falcon CI
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+  push:
+    branches:
+      - main
+      - develop
+      - features/**
+
+jobs:
+  build-and-test:
+    name: Build & Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+          cache: true
+
+      - name: Restore
+        run: dotnet restore Falcon.sln
+
+      - name: Build
+        run: dotnet build Falcon.sln --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test Falcon.sln --configuration Release --no-build --logger "trx;LogFileName=TestResults.trx"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ runner.os }}-test-results
+          path: '**/TestResults.trx'
+          if-no-files-found: ignore
+
+  security-baseline:
+    name: Security Baseline
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Dependency vulnerability scan
+        run: dotnet list Falcon.sln package --vulnerable --include-transitive
+
+      - name: Upload vulnerability report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-vulnerability-report
+          path: '**/*.sarif'
+          if-no-files-found: ignore
+
+  deploy-placeholder:
+    name: Deployment Placeholder
+    runs-on: ubuntu-latest
+    needs:
+      - build-and-test
+      - security-baseline
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Deployment guidance
+        run: |
+          echo "Add deployment steps here (e.g., Azure Web App, containers, or on-prem)."
+          echo "Use environment protection rules and approvals for production releases."
